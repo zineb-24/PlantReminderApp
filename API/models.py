@@ -5,6 +5,7 @@ from datetime import datetime
 from django.core.exceptions import ValidationError
 
 
+
 #The plant species stored in the database
 class Plant(models.Model):
     species_name = models.CharField(max_length=255)
@@ -137,5 +138,3 @@ class TaskToCheck(models.Model):
 
     def __str__(self):
         return f"Task: {self.user_plant_task.name} for {self.user_plant_task.user_plant.nickname}"
-
-

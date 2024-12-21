@@ -12,6 +12,7 @@ from django.db import models
 from datetime import datetime
 from django.utils.dateparse import parse_date
 
+
 # List all plants that matches the search query
 class PlantListView(APIView):
     def get(self, request):
@@ -83,18 +84,47 @@ class UserPlantListView(APIView):
             return JsonResponse({"error": "Plant not found"}, status=404)
 
 
-
-# Retreive a specific UserPlant details
 class UserPlantDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
         try:
+            # Retrieve the UserPlant instance for the authenticated user
             user_plant = UserPlant.objects.get(pk=pk, user=request.user)
         except UserPlant.DoesNotExist:
-            return JsonResponse({'error': 'Not found'}, status=404)
-        serializer = UserPlantSerializer(user_plant)
-        return JsonResponse(serializer.data)
+            return Response({'error': 'Not found'}, status=404)
+
+        # Serialize the UserPlant instance
+        user_plant_data = UserPlantSerializer(user_plant).data
+
+        # Retrieve and serialize UserPlantTask instances related to the UserPlant
+        tasks = UserPlantTask.objects.filter(user_plant=user_plant)
+        task_data = [
+            {
+                'name': task.name,
+                'frequency': f"{task.interval} {task.unit}(s)"
+            }
+            for task in tasks
+        ]
+
+        # Retrieve and serialize TaskToCheck instances related to the UserPlantTask
+        task_checks = TaskToCheck.objects.filter(user_plant_task__user_plant=user_plant)
+        task_check_data = [
+            {
+                'task_name': task_check.user_plant_task.name,
+                'due_date': task_check.due_date
+            }
+            for task_check in task_checks
+        ]
+
+        # Combine all the data
+        response_data = {
+            'user_plant': user_plant_data,
+            'tasks': task_data,
+            'task_checks': task_check_data
+        }
+
+        return Response(response_data, status=200)
 
 
 # List all sites for the authenticated user or create a new site
@@ -180,6 +210,7 @@ class CompletedTasksView(APIView):
         return JsonResponse(serializer.data, safe=False)
 
 
+#Add a UserPlantTask (predefined choices)
 class AddUserPlantTaskView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -223,47 +254,44 @@ class AddUserPlantTaskView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+#Update frequency of UserPlantTask (Doesn't affect current instance of TaskToCheck)
 class UpdateTaskFrequencyView(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, task_id):
         try:
-            # Retrieve the task the user wants to update
-            task = UserPlantTask.objects.get(id=task_id, user=request.user)
+            # Retrieve the UserPlantTask to update
+            task = UserPlantTask.objects.get(id=task_id, user_plant__user=request.user)
         except UserPlantTask.DoesNotExist:
             return Response({"error": "Task not found or not owned by user"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Retrieve the new frequency values from the request
+        # Get the new frequency values from the request
         new_interval = request.data.get('interval')
         new_unit = request.data.get('unit')
 
-        # If no frequency fields are provided, return an error
+        # Validate input
         if new_interval is None or new_unit is None:
             return Response({"error": "Interval and unit must be provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update the task frequency
+        try:
+            new_interval = int(new_interval)
+            if new_interval <= 0:
+                raise ValueError("Interval must be a positive integer.")
+        except ValueError:
+            return Response({"error": "Interval must be a valid positive integer."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update the task with the new frequency values
         task.interval = new_interval
         task.unit = new_unit
         task.save()
 
-        # Get the current task's due date (do not recalculate it)
-        current_due_date = task.due_date
-
-        # Now, you should update future tasks' due dates.
-        # We find the task-to-check that's due after this one.
-        upcoming_tasks = TaskToCheck.objects.filter(user_plant_task=task, due_date__gt=current_due_date)
-
-        for upcoming_task in upcoming_tasks:
-            # Recalculate the new due date based on the updated frequency
-            upcoming_task.due_date = upcoming_task.get_next_due_date()  # This will use the updated interval/unit
-
-            upcoming_task.save()
-
-        # Return the updated task details
-        serializer = UserPlantTaskSerializer(task)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(
+            {"message": "Task frequency updated successfully."},
+            status=status.HTTP_200_OK
+        )
 
 
+#Delete UserPlantTask and all related instances of TaskToCheck
 class DeleteUserPlantTaskView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -281,3 +309,32 @@ class DeleteUserPlantTaskView(APIView):
         task.delete()
 
         return Response({"message": "Task and its related check tasks have been successfully deleted."}, status=status.HTTP_204_NO_CONTENT)
+
+
+# marking tasks as completed and creating the next cycle is encapsulated within the model 
+# while the view simply triggers this process and handles the response
+class MarkTaskAsCompletedView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id):
+        try:
+            # Retrieve the task to be marked as completed
+            task = TaskToCheck.objects.get(id=task_id, user_plant_task__user_plant__user=request.user)
+        except TaskToCheck.DoesNotExist:
+            return Response({"error": "Task not found or not owned by user."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if the task is already completed
+        if task.is_completed:
+            return Response({"error": "Task is already completed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Mark the task as completed and create the next task
+        new_task = task.mark_as_completed()
+
+        return Response(
+            {
+                "message": "Task marked as completed successfully.",
+                "new_task_id": new_task.id,
+                "new_task_due_date": new_task.due_date,
+            },
+            status=status.HTTP_200_OK
+        )
