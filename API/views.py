@@ -1,7 +1,6 @@
 from .models import UserPlant, Plant, Site, UserPlantTask, TaskToCheck
 from .serializers import PlantSerializer, UserPlantSerializer, SiteSerializer, UserPlantTaskSerializer
 from django.http import JsonResponse
-from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import generics, permissions
@@ -10,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.db import models
 from datetime import datetime
+from django.utils.timezone import now, localtime
 from django.utils.dateparse import parse_date
 
 
@@ -34,9 +34,9 @@ class PlantListView(APIView):
 
 # Retreive a specific Plant details (When the user wants to add it)
 class PlantDetailView(APIView):
-    def get(self, request, pk):
+    def get(self, request, plant_id):
         try:
-            plant = Plant.objects.get(pk=pk)
+            plant = Plant.objects.get(pk=plant_id)
         except Plant.DoesNotExist:
             return JsonResponse({'error': 'Not found'}, status=404)
         serializer = PlantSerializer(plant)
@@ -61,9 +61,9 @@ class UserPlantListView(APIView):
         return JsonResponse(serializer.errors, status=400)
 
     # Update the nickname or other fields of a UserPlant
-    def patch(self, request, pk):
+    def patch(self, request, userPlant_id):
         try:
-            user_plant = UserPlant.objects.get(pk=pk, user=request.user)
+            user_plant = UserPlant.objects.get(pk=userPlant_id, user=request.user)
         except UserPlant.DoesNotExist:
             return JsonResponse({"error": "UserPlant not found or not owned by user"}, status=404)
 
@@ -75,22 +75,23 @@ class UserPlantListView(APIView):
         return JsonResponse(serializer.errors, status=400)
 
     # Delete a UserPlant
-    def delete(self, request, pk):
+    def delete(self, request, userPlant_id):
         try:
-            plant = UserPlant.objects.get(id=pk, user=request.user)
+            plant = UserPlant.objects.get(pk=userPlant_id, user=request.user)
             plant.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except UserPlant.DoesNotExist:
             return JsonResponse({"error": "Plant not found"}, status=404)
 
 
+#Retrieve details about a UserPlant
 class UserPlantDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, pk):
+    def get(self, request, userPlant_id):
         try:
             # Retrieve the UserPlant instance for the authenticated user
-            user_plant = UserPlant.objects.get(pk=pk, user=request.user)
+            user_plant = UserPlant.objects.get(pk=userPlant_id, user=request.user)
         except UserPlant.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
 
@@ -102,26 +103,57 @@ class UserPlantDetailView(APIView):
         task_data = [
             {
                 'name': task.name,
-                'frequency': f"{task.interval} {task.unit}(s)"
+                'frequency': f"every {task.interval} {task.unit}(s)"
             }
             for task in tasks
         ]
 
-        # Retrieve and serialize TaskToCheck instances related to the UserPlantTask
-        task_checks = TaskToCheck.objects.filter(user_plant_task__user_plant=user_plant)
-        task_check_data = [
+        # Define today's time range
+        today_start = localtime(now()).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = localtime(now()).replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        # Retrieve incomplete TaskToCheck instances related to the UserPlantTask
+        incomplete_tasks = TaskToCheck.objects.filter(user_plant_task__user_plant=user_plant, is_completed=False)
+
+        # Filter overdue tasks
+        overdue_tasks = incomplete_tasks.filter(due_date__lt=today_start)
+        overdue_task_data = [
             {
-                'task_name': task_check.user_plant_task.name,
-                'due_date': task_check.due_date
+                'task_name': task.user_plant_task.name,
+                'due_date': task.due_date
             }
-            for task_check in task_checks
+            for task in overdue_tasks
+        ]
+
+        # Filter tasks due today
+        due_today_tasks = incomplete_tasks.filter(due_date__gte=today_start, due_date__lte=today_end)
+        due_today_data = [
+            {
+                'task_name': task.user_plant_task.name,
+                'due_date': task.due_date
+            }
+            for task in due_today_tasks
+        ]
+
+        # Filter upcoming tasks (due after today)
+        upcoming_tasks = incomplete_tasks.filter(due_date__gt=today_end)
+        upcoming_task_data = [
+            {
+                'task_name': task.user_plant_task.name,
+                'due_date': task.due_date
+            }
+            for task in upcoming_tasks
         ]
 
         # Combine all the data
         response_data = {
             'user_plant': user_plant_data,
             'tasks': task_data,
-            'task_checks': task_check_data
+            'task_checks': {
+                'overdue_tasks': overdue_task_data,
+                'tasks_due_today': due_today_data,
+                'upcoming_tasks': upcoming_task_data
+            }
         }
 
         return Response(response_data, status=200)
@@ -168,10 +200,58 @@ class UserTasksView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Get all tasks that are due or overdue and not completed
-        tasks = UserPlantTask.objects.filter(user=request.user, is_completed=False, due_date__lte=timezone.now())
-        serializer = UserPlantTaskSerializer(tasks, many=True)
-        return Response(serializer.data)
+        # Get the start and end of the current day
+        today_start = localtime(now()).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = localtime(now()).replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        # Filter overdue tasks (due_date is in the past and not completed)
+        overdue_tasks = TaskToCheck.objects.filter(
+            user_plant_task__user_plant__user=request.user,
+            is_completed=False,
+            due_date__lt=today_start
+        )
+
+        # Filter tasks due today
+        due_tasks = TaskToCheck.objects.filter(
+            user_plant_task__user_plant__user=request.user,
+            is_completed=False,
+            due_date__gte=today_start,
+            due_date__lte=today_end
+        )
+
+        # Serialize overdue tasks
+        overdue_tasks_data = [
+            {
+                "task_name": task.user_plant_task.name,
+                "plant_nickname": task.user_plant_task.user_plant.nickname,
+                "description": task.user_plant_task.description,
+                "due_date": task.due_date,
+                "interval": task.user_plant_task.interval,
+                "unit": task.user_plant_task.unit,
+            }
+            for task in overdue_tasks
+        ]
+
+        # Serialize due tasks
+        due_tasks_data = [
+            {
+                "task_name": task.user_plant_task.name,
+                "plant_nickname": task.user_plant_task.user_plant.nickname,
+                "description": task.user_plant_task.description,
+                "due_date": task.due_date,
+                "interval": task.user_plant_task.interval,
+                "unit": task.user_plant_task.unit,
+            }
+            for task in due_tasks
+        ]
+
+        # Construct the response with separate sections
+        response_data = {
+            "overdue_tasks": overdue_tasks_data,
+            "due_tasks": due_tasks_data,
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 #View History of completed tasks
@@ -189,40 +269,48 @@ class CompletedTasksView(APIView):
                 if not date:
                     raise ValueError
             except ValueError:
-                return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-            
+                return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
+
             # Filter tasks completed on the specified date
-            completed_tasks = UserPlantTask.objects.filter(
+            completed_tasks = TaskToCheck.objects.filter(
                 completed_at__date=date,
-                user=request.user
+                is_completed=True,
+                user_plant_task__user_plant__user=request.user
             )
         else:
             # If no date is provided, return all completed tasks
-            completed_tasks = UserPlantTask.objects.filter(
-                completed_at__isnull=False,
-                user=request.user
+            completed_tasks = TaskToCheck.objects.filter(
+                is_completed=True,
+                user_plant_task__user_plant__user=request.user
             )
 
         # Serialize the tasks
-        serializer = UserPlantTaskSerializer(completed_tasks, many=True)
+        task_data = [
+            {
+                'task_name': task.user_plant_task.name,
+                'plant_name': task.user_plant_task.user_plant.nickname,
+                'completed_at': task.completed_at
+            }
+            for task in completed_tasks
+        ]
 
         # Return the serialized data
-        return JsonResponse(serializer.data, safe=False)
+        return Response(task_data, status=200)
 
 
 #Add a UserPlantTask (predefined choices)
 class AddUserPlantTaskView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, plant_id):
+    def post(self, request, userPlant_id):
         try:
-            plant = UserPlant.objects.get(id=plant_id, user=request.user)
+            plant = UserPlant.objects.get(pk=userPlant_id, user=request.user)
         except UserPlant.DoesNotExist:
             return Response({"error": "Plant not found or not owned by user"}, status=status.HTTP_404_NOT_FOUND)
 
         task_data = {
             'user': request.user.id,
-            'plant': plant.id,
+            'user_plant': plant.id,  # Correct the field name
             'name': request.data.get('name'),
             'description': request.data.get('description', ''),
             'interval': request.data.get('interval'),
@@ -261,7 +349,7 @@ class UpdateTaskFrequencyView(APIView):
     def put(self, request, task_id):
         try:
             # Retrieve the UserPlantTask to update
-            task = UserPlantTask.objects.get(id=task_id, user_plant__user=request.user)
+            task = UserPlantTask.objects.get(pk=task_id, user_plant__user=request.user)
         except UserPlantTask.DoesNotExist:
             return Response({"error": "Task not found or not owned by user"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -297,10 +385,16 @@ class DeleteUserPlantTaskView(APIView):
 
     def delete(self, request, task_id):
         try:
-            # Retrieve the task the user wants to delete
-            task = UserPlantTask.objects.get(id=task_id, user=request.user)
+            # Retrieve the task ensuring it belongs to the authenticated user's plant
+            task = UserPlantTask.objects.get(
+                pk=task_id,
+                user_plant__user=request.user  # Ensure the task's plant belongs to the user
+            )
         except UserPlantTask.DoesNotExist:
-            return Response({"error": "Task not found or not owned by user"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Task not found or not owned by user"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         # Delete all related TaskToCheck instances
         TaskToCheck.objects.filter(user_plant_task=task).delete()
@@ -308,7 +402,10 @@ class DeleteUserPlantTaskView(APIView):
         # Delete the UserPlantTask itself
         task.delete()
 
-        return Response({"message": "Task and its related check tasks have been successfully deleted."}, status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {"message": "Task and its related check tasks have been successfully deleted."},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 # marking tasks as completed and creating the next cycle is encapsulated within the model 
@@ -319,7 +416,7 @@ class MarkTaskAsCompletedView(APIView):
     def post(self, request, task_id):
         try:
             # Retrieve the task to be marked as completed
-            task = TaskToCheck.objects.get(id=task_id, user_plant_task__user_plant__user=request.user)
+            task = TaskToCheck.objects.get(pk=task_id, user_plant_task__user_plant__user=request.user)
         except TaskToCheck.DoesNotExist:
             return Response({"error": "Task not found or not owned by user."}, status=status.HTTP_404_NOT_FOUND)
 

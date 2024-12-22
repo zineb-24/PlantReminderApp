@@ -27,7 +27,7 @@ class SiteSerializer(serializers.ModelSerializer):
 class UserPlantTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPlantTask
-        fields = ['id', 'name', 'plant', 'description', 'interval', 'unit']
+        fields = ['id', 'name', 'user_plant', 'description', 'interval', 'unit', 'last_completed_at']
 
 
 class TaskToCheckSerializer(serializers.ModelSerializer):

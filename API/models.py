@@ -5,7 +5,6 @@ from datetime import datetime
 from django.core.exceptions import ValidationError
 
 
-
 #The plant species stored in the database
 class Plant(models.Model):
     species_name = models.CharField(max_length=255)
@@ -54,6 +53,7 @@ class UserPlant(models.Model):
         return f"{self.nickname or self.plant.species_name} ({self.user.username})"
 
 
+#Tasks the user defines for his UserPlant
 class UserPlantTask(models.Model):
     TASK_CHOICES = [
         ('misting', 'Misting'),
@@ -94,6 +94,7 @@ class UserPlantTask(models.Model):
         return last_completed_at  # Default if no frequency is set
 
 
+#The task instance the user checks related to a UserPlantTask
 class TaskToCheck(models.Model):
     user_plant_task = models.ForeignKey(UserPlantTask, on_delete=models.SET_NULL, null=True, blank=True)
     due_date = models.DateTimeField()
