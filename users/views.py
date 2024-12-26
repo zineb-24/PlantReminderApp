@@ -14,6 +14,7 @@ class RegisterView(APIView):
         serializer.save()
         return Response(serializer.data)
 
+
 class LoginView(APIView):
     def post(self, request):
         email = request.data['email']
@@ -43,22 +44,26 @@ class LoginView(APIView):
         }
         return response
 
-'''class UserView(APIView):
+class UserView(APIView):
 
     def get(self, request):
-        token = request.COOKIES.get('jwt')
+        auth_header = request.headers.get('Authorization')
 
-        if not token:
+        if not auth_header:
             raise AuthenticationFailed('Unauthenticated!')
 
         try:
+            token = auth_header.split(' ')[1]  # Extract token from "Bearer <token>"
             payload = jwt.decode(token, 'secret', algorithms=['HS256'])
-        except jwt.ExpiredSignatureError:
+        except (jwt.ExpiredSignatureError, IndexError):
             raise AuthenticationFailed('Unauthenticated!')
 
         user = User.objects.filter(id=payload['id']).first()
+        if not user:
+            raise AuthenticationFailed('User not found!')
+
         serializer = UserSerializer(user)
-        return Response(serializer.data)'''
+        return Response(serializer.data)
 
 class LogoutView(APIView):
     def post(self, request):
