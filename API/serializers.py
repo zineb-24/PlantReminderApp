@@ -27,8 +27,20 @@ class SiteSerializer(serializers.ModelSerializer):
 class UserPlantTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPlantTask
-        fields = ['id', 'name', 'user_plant', 'description', 'interval', 'unit', 'last_completed_at']
+        fields = ['id', 'name', 'description', 'last_completed_at', 'interval', 'unit', 'user_plant']
 
+    def update(self, instance, validated_data):
+        # Update the UserPlantTask instance
+        instance.last_completed_at = validated_data.get('last_completed_at', instance.last_completed_at)
+        instance.save()
+
+        # Recalculate the due date for the current TaskToCheck instance
+        current_task = TaskToCheck.objects.filter(user_plant_task=instance, is_completed=False).first()
+        if current_task:
+            current_task.due_date = instance.calculate_next_due_date()
+            current_task.save()
+
+        return instance
 
 class TaskToCheckSerializer(serializers.ModelSerializer):
     class Meta:

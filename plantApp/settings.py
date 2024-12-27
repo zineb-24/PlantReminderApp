@@ -144,16 +144,17 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-JWT_SECRET_KEY = os.getenv('SECRET', 'default')
-
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '10.0.2.2', 
 ]
 
-'''REST_FRAMEWORK = {
+REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
     ],
-}'''
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}

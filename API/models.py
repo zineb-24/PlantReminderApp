@@ -53,7 +53,7 @@ class UserPlant(models.Model):
         return f"{self.nickname or self.plant.species_name} ({self.user.username})"
 
 
-#Tasks the user defines for his UserPlant
+# Tasks the user defines for their UserPlant
 class UserPlantTask(models.Model):
     TASK_CHOICES = [
         ('misting', 'Misting'),
@@ -66,11 +66,14 @@ class UserPlantTask(models.Model):
     name = models.CharField(max_length=50, choices=TASK_CHOICES)
     description = models.TextField(blank=True, null=True)  # Optional custom description
 
-    last_completed_at = models.DateTimeField(null=True, blank=True)  # Last time the task was completed
+    # Last time the task was completed (updated to match the last TaskToCheck completion date)
+    last_completed_at = models.DateTimeField(null=True, blank=True)
     interval = models.PositiveIntegerField(default=1)  # Number of units for custom frequency (e.g., every 2 weeks)
-    unit = models.CharField(max_length=50, 
-                            choices=[('day', 'Day(s)'), ('week', 'Week(s)'),
-                                     ('month', 'Month(s)')], default='day')
+    unit = models.CharField(
+        max_length=50,
+        choices=[('day', 'Day(s)'), ('week', 'Week(s)'), ('month', 'Month(s)')],
+        default='day'
+    )
 
     def __str__(self):
         return f"{self.get_name_display()} (User: {self.user_plant.user.username})"
@@ -80,21 +83,22 @@ class UserPlantTask(models.Model):
         if self.interval <= 0:
             raise ValidationError("Interval must be greater than zero.")
 
-    def calculate_next_due_date(self, last_completed_at=None):
-        """Calculate next due date based on last completed date."""
-        if not last_completed_at:
-            return datetime.now()  # If no last completed date, return now
+    def calculate_next_due_date(self):
+        """Calculate the next due date based on the last completed date."""
+        if not self.last_completed_at:
+            # If no last completed date, use the current time
+            return datetime.now()
 
         if self.unit == 'day':
-            return last_completed_at + timedelta(days=self.interval)
+            return self.last_completed_at + timedelta(days=self.interval)
         elif self.unit == 'week':
-            return last_completed_at + timedelta(weeks=self.interval)
+            return self.last_completed_at + timedelta(weeks=self.interval)
         elif self.unit == 'month':
-            return last_completed_at + timedelta(weeks=4 * self.interval)  # Approx. 4 weeks for a month
-        return last_completed_at  # Default if no frequency is set
+            return self.last_completed_at + timedelta(weeks=4 * self.interval)  # Approx. 4 weeks for a month
+        return self.last_completed_at
 
 
-#The task instance the user checks related to a UserPlantTask
+# The task instance the user checks related to a UserPlantTask
 class TaskToCheck(models.Model):
     user_plant_task = models.ForeignKey(UserPlantTask, on_delete=models.SET_NULL, null=True, blank=True)
     due_date = models.DateTimeField()
@@ -102,13 +106,18 @@ class TaskToCheck(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     def mark_as_completed(self):
-        """Mark the task as completed and create a new task."""
+        """Mark the task as completed, update the parent task's last_completed_at, and create the next task."""
         self.is_completed = True
-        self.completed_at = datetime.now()  # Set the completion date when the task is marked as completed
+        self.completed_at = datetime.now()  # Set the completion date
         self.save()
 
-        # Calculate the next task's due date
-        next_due_date = self.get_next_due_date()
+        # Update the parent task's last_completed_at to the completed_at of this task
+        if self.user_plant_task:
+            self.user_plant_task.last_completed_at = self.completed_at
+            self.user_plant_task.save()
+
+        # Calculate the next task's due date using the UserPlantTask's calculate_next_due_date method
+        next_due_date = self.user_plant_task.calculate_next_due_date()
 
         # Create a new task for the next cycle
         new_task = TaskToCheck.objects.create(
@@ -119,23 +128,10 @@ class TaskToCheck(models.Model):
 
         return new_task
 
-    def get_next_due_date(self):
-        """Calculate the next due date based on previous task completion."""
-        previous_task = TaskToCheck.objects.filter(user_plant_task=self.user_plant_task).order_by('-due_date').first()
-        
-        # If this is the first task, use the last_completed_at from UserPlantTask
-        if not previous_task:
-            last_completed_at = self.user_plant_task.last_completed_at
-        else:
-            last_completed_at = previous_task.completed_at
-
-        # Calculate next due date based on the last completed task
-        return self.user_plant_task.calculate_next_due_date(last_completed_at)
-
     @classmethod
     def get_overdue_tasks(cls, user):
         """Retrieve all overdue tasks."""
-        return cls.objects.filter(user_plant_task__user=user, is_completed=False, due_date__lt=datetime.now())
+        return cls.objects.filter(user_plant_task__user_plant__user=user, is_completed=False, due_date__lt=datetime.now())
 
     def __str__(self):
         return f"Task: {self.user_plant_task.name} for {self.user_plant_task.user_plant.nickname}"

@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.db import models
 from datetime import datetime
-from django.utils.timezone import now, localtime
+from django.utils.timezone import now, localtime, timedelta
 from django.utils.dateparse import parse_date
 
 
@@ -195,8 +195,70 @@ class SiteDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
 
 
-#View due and overdue tasks
-class UserTasksView(APIView):
+#Fetch tasks for 30 days starting with todays date (Homepage)
+class HomepageTasksView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        # Get start date (today) and end date (30 days from now)
+        today = localtime(now()).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = today + timedelta(days=30)
+
+        # Get all incomplete tasks for the next 30 days in a single query
+        all_tasks = TaskToCheck.objects.filter(
+            user_plant_task__user_plant__user=request.user,
+            is_completed=False,
+            due_date__lte=end_date
+        ).order_by('due_date')
+
+        # Initialize response dictionary with date as key
+        tasks_by_date = {}
+
+        # Process each task and organize by date
+        for task in all_tasks:
+            task_date = task.due_date.date().isoformat()
+            
+            task_data = {
+                "task_name": task.user_plant_task.name,
+                "plant_nickname": task.user_plant_task.user_plant.nickname,
+                "description": task.user_plant_task.description,
+                "due_date": task.due_date,
+                "interval": task.user_plant_task.interval,
+                "unit": task.user_plant_task.unit,
+            }
+
+            if task_date not in tasks_by_date:
+                tasks_by_date[task_date] = {
+                    "due_tasks": [],
+                    "overdue": False
+                }
+
+            # Mark as overdue if the task's date is before today
+            if task.due_date.date() < today.date():
+                tasks_by_date[task_date]["overdue"] = True
+
+            tasks_by_date[task_date]["due_tasks"].append(task_data)
+
+        # Add empty entries for dates with no tasks
+        current_date = today
+        while current_date <= end_date:
+            date_str = current_date.date().isoformat()
+            if date_str not in tasks_by_date:
+                tasks_by_date[date_str] = {
+                    "due_tasks": [],
+                    "overdue": False
+                }
+            current_date += timedelta(days=1)
+
+        return Response({
+            "tasks_by_date": tasks_by_date,
+            "start_date": today.date().isoformat(),
+            "end_date": end_date.date().isoformat()
+        }, status=status.HTTP_200_OK)
+
+
+#View due and overdue tasks of today for a Userplant and also future due tasks
+'''class UserTasksView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -212,11 +274,18 @@ class UserTasksView(APIView):
         )
 
         # Filter tasks due today
-        due_tasks = TaskToCheck.objects.filter(
+        due_today_tasks = TaskToCheck.objects.filter(
             user_plant_task__user_plant__user=request.user,
             is_completed=False,
             due_date__gte=today_start,
             due_date__lte=today_end
+        )
+
+        # Filter future due tasks
+        future_due_tasks = TaskToCheck.objects.filter(
+            user_plant_task__user_plant__user=request.user,
+            is_completed=False,
+            due_date__gt=today_end
         )
 
         # Serialize overdue tasks
@@ -232,8 +301,8 @@ class UserTasksView(APIView):
             for task in overdue_tasks
         ]
 
-        # Serialize due tasks
-        due_tasks_data = [
+        # Serialize tasks due today
+        due_today_tasks_data = [
             {
                 "task_name": task.user_plant_task.name,
                 "plant_nickname": task.user_plant_task.user_plant.nickname,
@@ -242,16 +311,31 @@ class UserTasksView(APIView):
                 "interval": task.user_plant_task.interval,
                 "unit": task.user_plant_task.unit,
             }
-            for task in due_tasks
+            for task in due_today_tasks
+        ]
+
+        # Serialize future due tasks
+        future_due_tasks_data = [
+            {
+                "task_name": task.user_plant_task.name,
+                "plant_nickname": task.user_plant_task.user_plant.nickname,
+                "description": task.user_plant_task.description,
+                "due_date": task.due_date,
+                "interval": task.user_plant_task.interval,
+                "unit": task.user_plant_task.unit,
+            }
+            for task in future_due_tasks
         ]
 
         # Construct the response with separate sections
         response_data = {
             "overdue_tasks": overdue_tasks_data,
-            "due_tasks": due_tasks_data,
+            "tasks_due_today": due_today_tasks_data,
+            "future_due_tasks": future_due_tasks_data,
         }
 
-        return Response(response_data, status=status.HTTP_200_OK)
+        return Response(response_data, status=status.HTTP_200_OK)'''
+
 
 
 #View History of completed tasks
@@ -435,3 +519,27 @@ class MarkTaskAsCompletedView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+class UpdateLastCompletedView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, task_id):
+        try:
+            # Retrieve the UserPlantTask instance
+            task = UserPlantTask.objects.get(pk=task_id, user_plant__user=request.user)
+        except UserPlantTask.DoesNotExist:
+            return Response({"error": "Task not found or not owned by user."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Partially update the task
+        serializer = UserPlantTaskSerializer(task, data=request.data, partial=True)
+        if serializer.is_valid():
+            updated_task = serializer.save()
+            return Response(
+                {
+                    "message": "Last completed date updated successfully.",
+                    "task": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
