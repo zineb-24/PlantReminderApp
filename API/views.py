@@ -221,11 +221,14 @@ class HomepageTasksView(APIView):
             task_data = {
                 "task_name": task.user_plant_task.name,
                 "plant_nickname": task.user_plant_task.user_plant.nickname,
+                "site_name": task.user_plant_task.user_plant.site.name if task.user_plant_task.user_plant.site else 'No location',
+                "plant_image": task.user_plant_task.user_plant.image.url if task.user_plant_task.user_plant.image else None,
                 "description": task.user_plant_task.description,
                 "due_date": task.due_date,
                 "interval": task.user_plant_task.interval,
                 "unit": task.user_plant_task.unit,
             }
+
 
             if task_date not in tasks_by_date:
                 tasks_by_date[task_date] = {
@@ -255,87 +258,6 @@ class HomepageTasksView(APIView):
             "start_date": today.date().isoformat(),
             "end_date": end_date.date().isoformat()
         }, status=status.HTTP_200_OK)
-
-
-#View due and overdue tasks of today for a Userplant and also future due tasks
-'''class UserTasksView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        # Get the start and end of the current day
-        today_start = localtime(now()).replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = localtime(now()).replace(hour=23, minute=59, second=59, microsecond=999999)
-
-        # Filter overdue tasks (due_date is in the past and not completed)
-        overdue_tasks = TaskToCheck.objects.filter(
-            user_plant_task__user_plant__user=request.user,
-            is_completed=False,
-            due_date__lt=today_start
-        )
-
-        # Filter tasks due today
-        due_today_tasks = TaskToCheck.objects.filter(
-            user_plant_task__user_plant__user=request.user,
-            is_completed=False,
-            due_date__gte=today_start,
-            due_date__lte=today_end
-        )
-
-        # Filter future due tasks
-        future_due_tasks = TaskToCheck.objects.filter(
-            user_plant_task__user_plant__user=request.user,
-            is_completed=False,
-            due_date__gt=today_end
-        )
-
-        # Serialize overdue tasks
-        overdue_tasks_data = [
-            {
-                "task_name": task.user_plant_task.name,
-                "plant_nickname": task.user_plant_task.user_plant.nickname,
-                "description": task.user_plant_task.description,
-                "due_date": task.due_date,
-                "interval": task.user_plant_task.interval,
-                "unit": task.user_plant_task.unit,
-            }
-            for task in overdue_tasks
-        ]
-
-        # Serialize tasks due today
-        due_today_tasks_data = [
-            {
-                "task_name": task.user_plant_task.name,
-                "plant_nickname": task.user_plant_task.user_plant.nickname,
-                "description": task.user_plant_task.description,
-                "due_date": task.due_date,
-                "interval": task.user_plant_task.interval,
-                "unit": task.user_plant_task.unit,
-            }
-            for task in due_today_tasks
-        ]
-
-        # Serialize future due tasks
-        future_due_tasks_data = [
-            {
-                "task_name": task.user_plant_task.name,
-                "plant_nickname": task.user_plant_task.user_plant.nickname,
-                "description": task.user_plant_task.description,
-                "due_date": task.due_date,
-                "interval": task.user_plant_task.interval,
-                "unit": task.user_plant_task.unit,
-            }
-            for task in future_due_tasks
-        ]
-
-        # Construct the response with separate sections
-        response_data = {
-            "overdue_tasks": overdue_tasks_data,
-            "tasks_due_today": due_today_tasks_data,
-            "future_due_tasks": future_due_tasks_data,
-        }
-
-        return Response(response_data, status=status.HTTP_200_OK)'''
-
 
 
 #View History of completed tasks
@@ -382,7 +304,7 @@ class CompletedTasksView(APIView):
         return Response(task_data, status=200)
 
 
-#Add a UserPlantTask (predefined choices)
+# Add a UserPlantTask (predefined choices)
 class AddUserPlantTaskView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -402,9 +324,14 @@ class AddUserPlantTaskView(APIView):
             'last_completed_at': request.data.get('last_completed_at')
         }
 
-        # Parse last_completed_at if provided
+        # Parse and validate last_completed_at if provided
         if task_data['last_completed_at']:
-            task_data['last_completed_at'] = datetime.fromisoformat(task_data['last_completed_at'])
+            try:
+                task_data['last_completed_at'] = datetime.fromisoformat(task_data['last_completed_at'])
+                if task_data['last_completed_at'] > now():
+                    raise ValueError("last_completed_at cannot be in the future.")
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = UserPlantTaskSerializer(data=task_data)
 
@@ -424,6 +351,7 @@ class AddUserPlantTaskView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 #Update frequency of UserPlantTask (Doesn't affect current instance of TaskToCheck)
@@ -535,9 +463,16 @@ class UpdateLastCompletedView(APIView):
         serializer = UserPlantTaskSerializer(task, data=request.data, partial=True)
         if serializer.is_valid():
             updated_task = serializer.save()
+
+            # Recalculate due_date for the current TaskToCheck
+            current_task = TaskToCheck.objects.filter(user_plant_task=updated_task, is_completed=False).first()
+            if current_task:
+                current_task.due_date = updated_task.calculate_next_due_date()
+                current_task.save()
+
             return Response(
                 {
-                    "message": "Last completed date updated successfully.",
+                    "message": "Last completed date updated and current task due date recalculated successfully.",
                     "task": serializer.data,
                 },
                 status=status.HTTP_200_OK,

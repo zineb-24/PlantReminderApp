@@ -5,17 +5,18 @@ from datetime import datetime
 from django.core.exceptions import ValidationError
 
 
-#The plant species stored in the database
+# The plant species stored in the database
 class Plant(models.Model):
     species_name = models.CharField(max_length=255)
     scientific_name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
+    image = models.ImageField(upload_to='plants/', null=True, blank=True)  
 
     def __str__(self):
         return self.species_name
 
 
-#Sites the user can add to organize his plants
+# Sites the user can add to organize their plants
 class Site(models.Model):
     LIGHT_CHOICES = [
         ('low', 'Low'),
@@ -41,13 +42,20 @@ class Site(models.Model):
         return f"{self.name} ({self.user.username})"
 
 
-#Plants of the user
+# Plants of the user
 class UserPlant(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_plants')
     plant = models.ForeignKey(Plant, on_delete=models.CASCADE, related_name='user_plants')
     site = models.ForeignKey(Site, on_delete=models.SET_NULL, null=True, blank=True, related_name='site')
     nickname = models.CharField(max_length=255, blank=True, null=True)
     added_at = models.DateTimeField(auto_now_add=True)
+    image = models.ImageField(upload_to='user_plants/', null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # Default the UserPlant's image to the Plant's image if not explicitly set
+        if not self.image and self.plant.image:
+            self.image = self.plant.image
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.nickname or self.plant.species_name} ({self.user.username})"

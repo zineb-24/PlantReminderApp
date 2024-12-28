@@ -10,11 +10,10 @@ class PlantSerializer(serializers.ModelSerializer):
 class UserPlantSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPlant
-        fields = ['id', 'plant', 'nickname', 'site', 'added_at']
+        fields = ['id', 'plant', 'nickname', 'site', 'added_at', 'image']
 
     def create(self, validated_data):
         user = self.context['request'].user  # Get the user from the request context
-        # Create and return the new UserPlant instance
         return UserPlant.objects.create(user=user, **validated_data)
 
 
