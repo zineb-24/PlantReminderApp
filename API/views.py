@@ -207,7 +207,7 @@ class HomepageTasksView(APIView):
         # Get all incomplete tasks for the next 30 days in a single query
         all_tasks = TaskToCheck.objects.filter(
             user_plant_task__user_plant__user=request.user,
-            is_completed=False,
+            #is_completed=False,
             due_date__lte=end_date
         ).order_by('due_date')
 
@@ -219,6 +219,7 @@ class HomepageTasksView(APIView):
             task_date = task.due_date.date().isoformat()
             
             task_data = {
+                "id": task.id,
                 "task_name": task.user_plant_task.name,
                 "plant_nickname": task.user_plant_task.user_plant.nickname,
                 "site_name": task.user_plant_task.user_plant.site.name if task.user_plant_task.user_plant.site else 'No location',
@@ -227,6 +228,7 @@ class HomepageTasksView(APIView):
                 "due_date": task.due_date,
                 "interval": task.user_plant_task.interval,
                 "unit": task.user_plant_task.unit,
+                "is_completed": task.is_completed,
             }
 
 
