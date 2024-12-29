@@ -6,8 +6,15 @@ class PlantSerializer(serializers.ModelSerializer):
         model = Plant
         fields = ['id', 'species_name', 'scientific_name', 'description']
 
+class SiteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Site
+        fields = ['id', 'name', 'light', 'location']
 
 class UserPlantSerializer(serializers.ModelSerializer):
+    site = SiteSerializer()  # Serialize the site as a nested object
+    plant = PlantSerializer()  # Serialize the plant as a nested object
+
     class Meta:
         model = UserPlant
         fields = ['id', 'plant', 'nickname', 'site', 'added_at', 'image']
@@ -15,12 +22,6 @@ class UserPlantSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = self.context['request'].user  # Get the user from the request context
         return UserPlant.objects.create(user=user, **validated_data)
-
-
-class SiteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Site
-        fields = ['id', 'name', 'light', 'location']
 
 
 class UserPlantTaskSerializer(serializers.ModelSerializer):
