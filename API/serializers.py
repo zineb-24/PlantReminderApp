@@ -12,18 +12,40 @@ class SiteSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'light', 'location']
 
 class UserPlantSerializer(serializers.ModelSerializer):
-    site = SiteSerializer()  # Serialize the site as a nested object
-    plant = PlantSerializer()  # Serialize the plant as a nested object
+    site = SiteSerializer(read_only=True)  # Use SiteSerializer for nested read-only
+    plant = PlantSerializer(read_only=True)  # Use PlantSerializer for nested read-only
+    site_id = serializers.PrimaryKeyRelatedField(
+        queryset=Site.objects.all(),
+        write_only=True,
+        source='site',  # Map `site_id` to `site`
+    )
 
     class Meta:
         model = UserPlant
-        fields = ['id', 'plant', 'nickname', 'site', 'added_at', 'image']
+        fields = ['id', 'plant', 'nickname', 'site', 'site_id', 'added_at', 'image']
 
     def create(self, validated_data):
         user = self.context['request'].user  # Get the user from the request context
         return UserPlant.objects.create(user=user, **validated_data)
 
+    def update(self, instance, validated_data):
+        # Handle `site` updates via `site_id`
+        site_instance = validated_data.pop('site', None)
+        if site_instance:
+            instance.site = site_instance
 
+        # Update the remaining fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        print("Validated data:", validated_data)
+        print("Instance site before save:", instance.site)
+
+        # Save the instance
+        instance.save()
+        return instance
+
+    
 class UserPlantTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPlantTask
@@ -41,6 +63,7 @@ class UserPlantTaskSerializer(serializers.ModelSerializer):
             current_task.save()
 
         return instance
+
 
 class TaskToCheckSerializer(serializers.ModelSerializer):
     class Meta:

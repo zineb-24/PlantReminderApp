@@ -28,7 +28,7 @@ urlpatterns = [
 
     # Site-related URLs
     path('sites/', SiteListCreateView.as_view(), name='site-list-create'),
-    path('sites/<int:site_id>/', SiteDetailView.as_view(), name='site-detail'),
+    path('sites/<int:pk>/', SiteDetailView.as_view(), name='site-detail'),
     path('sites/<int:site_id>/plants/<int:userPlant_id>/remove/', RemovePlantFromSiteView.as_view(), name='remove-plant-from-site'),
 
     # Task-related URLs
