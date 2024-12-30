@@ -195,6 +195,39 @@ class SiteDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance.delete()
 
 
+class RemovePlantFromSiteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, userPlant_id, site_id):
+        try:
+            # Get the plant and verify it belongs to the user and the specified site
+            plant = UserPlant.objects.get(
+                pk=userPlant_id, 
+                user=request.user,
+                site_id=site_id
+            )
+            
+            # Store site name for response message
+            site_name = plant.site.name
+            
+            # Remove the plant from the site
+            plant.site = None
+            plant.save()
+            
+            return Response({
+                'message': f'Plant removed from {site_name} successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except UserPlant.DoesNotExist:
+            return Response({
+                'error': 'Plant not found or not in this site'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
 #Fetch tasks for 30 days starting with todays date (Homepage)
 class HomepageTasksView(APIView):
     permission_classes = [IsAuthenticated]
@@ -354,7 +387,20 @@ class AddUserPlantTaskView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class UserPlantTasksView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request, userPlant_id):
+        try:
+            plant = UserPlant.objects.get(pk=userPlant_id, user=request.user)
+            tasks = UserPlantTask.objects.filter(user_plant=plant)
+            serializer = UserPlantTaskSerializer(tasks, many=True)
+            return Response(serializer.data)
+        except UserPlant.DoesNotExist:
+            return Response(
+                {"error": "Plant not found or not owned by user"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 #Update frequency of UserPlantTask (Doesn't affect current instance of TaskToCheck)
 class UpdateTaskFrequencyView(APIView):

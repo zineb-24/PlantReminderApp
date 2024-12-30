@@ -12,6 +12,8 @@ from .views import (
     CompletedTasksView,
     MarkTaskAsCompletedView,
     HomepageTasksView,
+    UserPlantTasksView,
+    RemovePlantFromSiteView,
 )
 
 urlpatterns = [
@@ -27,8 +29,10 @@ urlpatterns = [
     # Site-related URLs
     path('sites/', SiteListCreateView.as_view(), name='site-list-create'),
     path('sites/<int:site_id>/', SiteDetailView.as_view(), name='site-detail'),
+    path('sites/<int:site_id>/plants/<int:userPlant_id>/remove/', RemovePlantFromSiteView.as_view(), name='remove-plant-from-site'),
 
     # Task-related URLs
+    path('plants/<int:userPlant_id>/tasks/', UserPlantTasksView.as_view(), name='plant-tasks'),
     path('plants/<int:userPlant_id>/tasks/', AddUserPlantTaskView.as_view(), name='add-task'),
     path('tasks/<int:task_id>/update/', UpdateTaskFrequencyView.as_view(), name='update-task-frequency'),
     path('tasks/<int:task_id>/delete/', DeleteUserPlantTaskView.as_view(), name='delete-task'),
