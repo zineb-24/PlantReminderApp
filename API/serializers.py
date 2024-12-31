@@ -1,10 +1,23 @@
 from rest_framework import serializers
+from plantApp import settings
 from .models import UserPlant, Plant, Site, UserPlantTask, TaskToCheck
 
 class PlantSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
     class Meta:
         model = Plant
-        fields = ['id', 'species_name', 'scientific_name', 'description']
+        fields = [
+            'id', 'image', 'species_name', 'scientific_name', 'description',
+            'preferred_light', 'ideal_temp', 'bloom_time', 'toxicity'
+        ]
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            return request.build_absolute_uri(obj.image.url)
+        return None
+
 
 class SiteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -44,7 +57,13 @@ class UserPlantSerializer(serializers.ModelSerializer):
         # Save the instance
         instance.save()
         return instance
-
+    
+    def get_image(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            return request.build_absolute_uri(obj.image.url)
+        return None
+    
     
 class UserPlantTaskSerializer(serializers.ModelSerializer):
     class Meta:

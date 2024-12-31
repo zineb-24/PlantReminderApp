@@ -5,7 +5,7 @@ from .models import Plant, UserPlant, Site, UserPlantTask, TaskToCheck
 
 @admin.register(Plant)
 class PlantAdmin(admin.ModelAdmin):
-    list_display = ('id','species_name', 'scientific_name')
+    list_display = ('id','species_name', 'scientific_name', 'description', 'preferred_light', 'ideal_temp', 'bloom_time', 'toxicity', 'ideal_water')
     search_fields = ('species_name', 'scientific_name')
 
 

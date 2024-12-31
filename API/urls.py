@@ -33,7 +33,7 @@ urlpatterns = [
 
     # Task-related URLs
     path('plants/<int:userPlant_id>/tasks/', UserPlantTasksView.as_view(), name='plant-tasks'),
-    path('plants/<int:userPlant_id>/tasks/', AddUserPlantTaskView.as_view(), name='add-task'),
+    path('plants/<int:userPlant_id>/add-tasks/', AddUserPlantTaskView.as_view(), name='add-task'),
     path('tasks/<int:task_id>/update/', UpdateTaskFrequencyView.as_view(), name='update-task-frequency'),
     path('tasks/<int:task_id>/delete/', DeleteUserPlantTaskView.as_view(), name='delete-task'),
     path('tasks/completed/', CompletedTasksView.as_view(), name='Tasks-history'),

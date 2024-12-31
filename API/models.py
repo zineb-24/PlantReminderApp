@@ -9,6 +9,11 @@ from django.core.exceptions import ValidationError
 class Plant(models.Model):
     species_name = models.CharField(max_length=255)
     scientific_name = models.CharField(max_length=255)
+    preferred_light = models.CharField(max_length=255)
+    ideal_temp = models.CharField(max_length=255)
+    bloom_time = models.CharField(max_length=255, null=True, blank=True)
+    toxicity = models.CharField(max_length=255)
+    ideal_water = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='plants/', null=True, blank=True)  
 

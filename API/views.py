@@ -27,8 +27,8 @@ class PlantListView(APIView):
                 models.Q(scientific_name__icontains=search)
             )
         
-        # Serialize the filtered queryset
-        serializer = PlantSerializer(queryset, many=True)
+        # Serialize the filtered queryset with the request context
+        serializer = PlantSerializer(queryset, many=True, context={'request': request})
         return JsonResponse(serializer.data, safe=False)
 
 
@@ -49,7 +49,7 @@ class UserPlantListView(APIView):
     # List all the UserPlants
     def get(self, request):
         queryset = UserPlant.objects.filter(user=request.user)
-        serializer = UserPlantSerializer(queryset, many=True)
+        serializer = UserPlantSerializer(queryset, many=True, context={'request': request})
         return JsonResponse(serializer.data, safe=False)
 
     # Add a UserPlant
@@ -228,7 +228,6 @@ class RemovePlantFromSiteView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
-#Fetch tasks for 30 days starting with todays date (Homepage)
 class HomepageTasksView(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -237,11 +236,16 @@ class HomepageTasksView(APIView):
         today = localtime(now()).replace(hour=0, minute=0, second=0, microsecond=0)
         end_date = today + timedelta(days=30)
 
-        # Get all incomplete tasks for the next 30 days in a single query
+        # Query all tasks due within 30 days or overdue tasks
         all_tasks = TaskToCheck.objects.filter(
             user_plant_task__user_plant__user=request.user,
-            #is_completed=False,
             due_date__lte=end_date
+        ).order_by('due_date')
+
+        overdue_tasks = TaskToCheck.objects.filter(
+            user_plant_task__user_plant__user=request.user,
+            is_completed=False,
+            due_date__lt=today
         ).order_by('due_date')
 
         # Initialize response dictionary with date as key
@@ -262,8 +266,8 @@ class HomepageTasksView(APIView):
                 "interval": task.user_plant_task.interval,
                 "unit": task.user_plant_task.unit,
                 "is_completed": task.is_completed,
+                "overdue_since": None,  # Default value for non-overdue tasks
             }
-
 
             if task_date not in tasks_by_date:
                 tasks_by_date[task_date] = {
@@ -274,8 +278,31 @@ class HomepageTasksView(APIView):
             # Mark as overdue if the task's date is before today
             if task.due_date.date() < today.date():
                 tasks_by_date[task_date]["overdue"] = True
+                task_data["overdue_since"] = task.due_date.date().isoformat()
 
             tasks_by_date[task_date]["due_tasks"].append(task_data)
+
+        # Add overdue tasks to today's date
+        overdue_task_data = []
+        for task in overdue_tasks:
+            overdue_task_data.append({
+                "id": task.id,
+                "task_name": task.user_plant_task.name,
+                "plant_nickname": task.user_plant_task.user_plant.nickname,
+                "site_name": task.user_plant_task.user_plant.site.name if task.user_plant_task.user_plant.site else 'No location',
+                "plant_image": task.user_plant_task.user_plant.image.url if task.user_plant_task.user_plant.image else None,
+                "description": task.user_plant_task.description,
+                "due_date": task.due_date,
+                "interval": task.user_plant_task.interval,
+                "unit": task.user_plant_task.unit,
+                "is_completed": task.is_completed,
+                "overdue_since": task.due_date.date().isoformat(),  # Add overdue date
+            })
+
+        today_str = today.date().isoformat()
+        if today_str not in tasks_by_date:
+            tasks_by_date[today_str] = {"due_tasks": [], "overdue": False}
+        tasks_by_date[today_str]["due_tasks"].extend(overdue_task_data)
 
         # Add empty entries for dates with no tasks
         current_date = today
