@@ -54,6 +54,7 @@ class UserPlantListView(APIView):
 
     # Add a UserPlant
     def post(self, request):
+
         serializer = UserPlantSerializer(data=request.data, context={'request': request})  # Add context here
         if serializer.is_valid():
             serializer.save()  # This will use the create method in the serializer

@@ -27,17 +27,27 @@ class SiteSerializer(serializers.ModelSerializer):
 class UserPlantSerializer(serializers.ModelSerializer):
     site = SiteSerializer(read_only=True)  # Use SiteSerializer for nested read-only
     plant = PlantSerializer(read_only=True)  # Use PlantSerializer for nested read-only
+    
     site_id = serializers.PrimaryKeyRelatedField(
         queryset=Site.objects.all(),
         write_only=True,
         source='site',  # Map `site_id` to `site`
+        required=False,  # Mark as optional
+        allow_null=True,  # Allow null values
+    )
+
+    plant_id = serializers.PrimaryKeyRelatedField(
+        queryset=Plant.objects.all(),
+        source='plant',
+        write_only=True
     )
 
     class Meta:
         model = UserPlant
-        fields = ['id', 'plant', 'nickname', 'site', 'site_id', 'added_at', 'image']
+        fields = ['id', 'plant', 'nickname', 'site', 'site_id', 'added_at', 'image', 'plant_id']
 
     def create(self, validated_data):
+        print("Validated Data:", validated_data)
         user = self.context['request'].user  # Get the user from the request context
         return UserPlant.objects.create(user=user, **validated_data)
 
