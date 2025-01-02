@@ -85,7 +85,6 @@ class UserPlantListView(APIView):
             return JsonResponse({"error": "Plant not found"}, status=404)
 
 
-#Retrieve details about a UserPlant
 class UserPlantDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -96,15 +95,17 @@ class UserPlantDetailView(APIView):
         except UserPlant.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
 
-        # Serialize the UserPlant instance
-        user_plant_data = UserPlantSerializer(user_plant).data
+        # Add request to serializer context
+        user_plant_data = UserPlantSerializer(user_plant, context={'request': request}).data
 
         # Retrieve and serialize UserPlantTask instances related to the UserPlant
         tasks = UserPlantTask.objects.filter(user_plant=user_plant)
         task_data = [
             {
                 'name': task.name,
-                'frequency': f"every {task.interval} {task.unit}(s)"
+                'frequency': f"every {task.interval} {task.unit}(s)",
+                'interval': task.interval,
+                'unit': task.unit
             }
             for task in tasks
         ]
@@ -121,7 +122,9 @@ class UserPlantDetailView(APIView):
         overdue_task_data = [
             {
                 'task_name': task.user_plant_task.name,
-                'due_date': task.due_date
+                'due_date': task.due_date,
+                'interval': task.user_plant_task.interval,
+                'unit': task.user_plant_task.unit
             }
             for task in overdue_tasks
         ]
@@ -131,7 +134,9 @@ class UserPlantDetailView(APIView):
         due_today_data = [
             {
                 'task_name': task.user_plant_task.name,
-                'due_date': task.due_date
+                'due_date': task.due_date,
+                'interval': task.user_plant_task.interval,
+                'unit': task.user_plant_task.unit
             }
             for task in due_today_tasks
         ]
@@ -141,7 +146,9 @@ class UserPlantDetailView(APIView):
         upcoming_task_data = [
             {
                 'task_name': task.user_plant_task.name,
-                'due_date': task.due_date
+                'due_date': task.due_date,
+                'interval': task.user_plant_task.interval,
+                'unit': task.user_plant_task.unit
             }
             for task in upcoming_tasks
         ]

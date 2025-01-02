@@ -147,4 +147,8 @@ class TaskToCheck(models.Model):
         return cls.objects.filter(user_plant_task__user_plant__user=user, is_completed=False, due_date__lt=datetime.now())
 
     def __str__(self):
-        return f"Task: {self.user_plant_task.name} for {self.user_plant_task.user_plant.nickname}"
+        if self.user_plant_task:
+            plant_name = self.user_plant_task.user_plant.nickname or self.user_plant_task.user_plant.plant.species_name
+            return f"Task: {self.user_plant_task.name} for {plant_name}"
+        return "Unlinked Task"
+
