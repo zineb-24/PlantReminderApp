@@ -6,10 +6,14 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password']
-
         extra_kwargs = {
             'password': {'write_only': True}
         }
+
+    def validate_username(self, value):
+        if not value:
+            raise serializers.ValidationError("Username cannot be blank.")
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
