@@ -19,11 +19,11 @@ class PlantSerializer(serializers.ModelSerializer):
         return None
 
 
-
 class SiteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Site
         fields = ['id', 'name', 'light', 'location']
+
 
 class UserPlantSerializer(serializers.ModelSerializer):
     site = SiteSerializer(read_only=True)  # Use SiteSerializer for nested read-only
