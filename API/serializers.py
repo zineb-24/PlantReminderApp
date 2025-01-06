@@ -2,6 +2,7 @@ from rest_framework import serializers
 from plantApp import settings
 from .models import UserPlant, Plant, Site, UserPlantTask, TaskToCheck
 
+
 class PlantSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
 

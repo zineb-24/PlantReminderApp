@@ -422,6 +422,7 @@ class AddUserPlantTaskView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class UserPlantTasksView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -436,6 +437,7 @@ class UserPlantTasksView(APIView):
                 {"error": "Plant not found or not owned by user"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
 
 #Update frequency of UserPlantTask (Doesn't affect current instance of TaskToCheck)
 class UpdateTaskFrequencyView(APIView):
