@@ -113,6 +113,11 @@ class UserPlantTask(models.Model):
 
 # The task instance the user checks related to a UserPlantTask
 class TaskToCheck(models.Model):
+    class Meta:
+        indexes = [
+            models.Index(fields=['completed_at']),  # Add index for better query performance
+        ]
+
     user_plant_task = models.ForeignKey(UserPlantTask, on_delete=models.SET_NULL, null=True, blank=True)
     due_date = models.DateTimeField()
     is_completed = models.BooleanField(default=False)

@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.db import models
 from datetime import datetime
+from django.utils.timezone import make_aware
 from django.utils.timezone import now, localtime, timedelta
 from django.utils.dateparse import parse_date
 
@@ -334,44 +335,42 @@ class HomepageTasksView(APIView):
 class CompletedTasksView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        # Get the date from query parameters
-        date_param = request.query_params.get('date')
-
-        if date_param:
-            try:
-                # Parse the date parameter
-                date = parse_date(date_param)
-                if not date:
-                    raise ValueError
-            except ValueError:
-                return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
-
+    def get(self, request, date_str):
+        try:
+            # Parse the date from URL parameter
+            date = parse_date(date_str)
+            if not date:
+                raise ValueError
+            
+            # Convert to datetime range for the full day
+            start_date = make_aware(datetime.combine(date, datetime.min.time()))
+            end_date = make_aware(datetime.combine(date, datetime.max.time()))
+            
             # Filter tasks completed on the specified date
             completed_tasks = TaskToCheck.objects.filter(
-                completed_at__date=date,
+                completed_at__range=(start_date, end_date),
                 is_completed=True,
                 user_plant_task__user_plant__user=request.user
-            )
-        else:
-            # If no date is provided, return all completed tasks
-            completed_tasks = TaskToCheck.objects.filter(
-                is_completed=True,
-                user_plant_task__user_plant__user=request.user
-            )
+            ).select_related('user_plant_task__user_plant')  # Optimize database queries
+            
+            # Serialize the tasks
+            task_data = [
+                {
+                    'id': task.id,
+                    'task_name': task.user_plant_task.name,
+                    'plant_name': task.user_plant_task.user_plant.nickname or task.user_plant_task.user_plant.plant.species_name,
+                    'completed_at': task.completed_at,
+                }
+                for task in completed_tasks
+            ]
 
-        # Serialize the tasks
-        task_data = [
-            {
-                'task_name': task.user_plant_task.name,
-                'plant_name': task.user_plant_task.user_plant.nickname,
-                'completed_at': task.completed_at
-            }
-            for task in completed_tasks
-        ]
-
-        # Return the serialized data
-        return Response(task_data, status=200)
+            return Response(task_data, status=status.HTTP_200_OK)
+                
+        except ValueError:
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 # Add a UserPlantTask (predefined choices)

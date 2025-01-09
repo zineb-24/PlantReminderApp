@@ -36,7 +36,7 @@ urlpatterns = [
     path('plants/<int:userPlant_id>/add-tasks/', AddUserPlantTaskView.as_view(), name='add-task'),
     path('tasks/<int:task_id>/update/', UpdateTaskFrequencyView.as_view(), name='update-task-frequency'),
     path('tasks/<int:task_id>/delete/', DeleteUserPlantTaskView.as_view(), name='delete-task'),
-    path('tasks/completed/', CompletedTasksView.as_view(), name='Tasks-history'),
+    path('tasks/completed/<str:date_str>/', CompletedTasksView.as_view(), name='completed-tasks-by-date'),
     path('tasks/<int:task_id>/complete/', MarkTaskAsCompletedView.as_view(), name='mark-task-completed'),
     path('tasks/homepage-tasks/', HomepageTasksView.as_view(), name='homepage-tasks'),
 ]
